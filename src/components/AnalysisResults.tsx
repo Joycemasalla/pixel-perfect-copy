@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, Copy, Download, Info, RotateCcw, XCircle }
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ScoreGauge } from "@/components/ScoreGauge";
-import { ResumePreview } from "@/components/ResumePreview";
+import { ResumePreview, ResumePrintSheet } from "@/components/ResumePreview";
 import type { AnalysisResult } from "@/lib/analysis-types";
 
 function Section({
@@ -275,6 +275,7 @@ export function AnalysisResults({
         </p>
         <div className="mt-5">
           <ResumePreview content={result.optimizedResume} />
+          <ResumePrintSheet content={result.optimizedResume} />
         </div>
       </Section>
 

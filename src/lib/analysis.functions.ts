@@ -8,17 +8,57 @@ const inputSchema = z.object({
   resume: z.string().min(MIN_CONTENT_LENGTH),
 });
 
+/** Models sometimes label the keyword field `keyword`/`name`, or return a bare string. */
+function keywordEntry(detailKeys: string[]) {
+  return z.preprocess(
+    (value) => {
+      if (typeof value === "string") return { term: value, detail: "" };
+      if (value && typeof value === "object") {
+        const raw = value as Record<string, unknown>;
+        const term = raw["term"] ?? raw["keyword"] ?? raw["name"] ?? raw["palavra"] ?? "";
+        let detail: unknown = "";
+        for (const key of [...detailKeys, "detail", "description", "explicacao", "nota"]) {
+          if (typeof raw[key] === "string" && raw[key]) {
+            detail = raw[key];
+            break;
+          }
+        }
+        return { term: String(term), detail: typeof detail === "string" ? detail : "" };
+      }
+      return { term: "", detail: "" };
+    },
+    z.object({ term: z.string(), detail: z.string().default("") }),
+  );
+}
+
+const stringList = z.preprocess(
+  (value) =>
+    Array.isArray(value)
+      ? value.map((item) =>
+          typeof item === "string"
+            ? item
+            : String(
+                (item as Record<string, unknown>)?.["name"] ??
+                  (item as Record<string, unknown>)?.["term"] ??
+                  (item as Record<string, unknown>)?.["skill"] ??
+                  "",
+              ),
+        )
+      : [],
+  z.array(z.string()).transform((items) => items.filter(Boolean)),
+);
+
 const resultSchema = z.object({
-  matchScore: z.number().min(0).max(100),
+  matchScore: z.coerce.number().min(0).max(100),
   jobTitle: z.string().default(""),
-  summary: z.string(),
-  keywordsFound: z.array(z.object({ term: z.string(), evidence: z.string().default("") })).default([]),
-  keywordsPartial: z.array(z.object({ term: z.string(), note: z.string().default("") })).default([]),
-  keywordsMissing: z.array(z.object({ term: z.string(), explanation: z.string().default("") })).default([]),
-  technicalSkills: z.array(z.string()).default([]),
-  softSkills: z.array(z.string()).default([]),
-  strengths: z.array(z.string()).default([]),
-  improvements: z.array(z.string()).default([]),
+  summary: z.string().default(""),
+  keywordsFound: z.array(keywordEntry(["evidence", "evidencia"])).default([]),
+  keywordsPartial: z.array(keywordEntry(["note", "observacao"])).default([]),
+  keywordsMissing: z.array(keywordEntry(["explanation", "reason"])).default([]),
+  technicalSkills: stringList.default([]),
+  softSkills: stringList.default([]),
+  strengths: stringList.default([]),
+  improvements: stringList.default([]),
   optimizedResume: z.string(),
 });
 
@@ -77,7 +117,8 @@ export const analyzeResume = createServerFn({ method: "POST" })
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3.8-flash",
+        model: "openai/gpt-6-astra",
+        reasoning_effort: "low",
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
@@ -101,9 +142,30 @@ export const analyzeResume = createServerFn({ method: "POST" })
     const content = payload.choices?.[0]?.message?.content;
     if (!content) throw new Error("AI_EMPTY");
 
-    const parsed = resultSchema.parse(extractJson(content));
+    const validation = resultSchema.safeParse(extractJson(content));
+    if (!validation.success) {
+      console.error("AI result validation failed", JSON.stringify(validation.error.issues).slice(0, 800));
+      console.error("AI raw content", content.slice(0, 1500));
+      throw new Error("AI_SHAPE");
+    }
+    const parsed = validation.data;
     return {
-      ...parsed,
       matchScore: Math.max(0, Math.min(100, Math.round(parsed.matchScore))),
+      jobTitle: parsed.jobTitle,
+      summary: parsed.summary,
+      keywordsFound: parsed.keywordsFound
+        .filter((item) => item.term)
+        .map((item) => ({ term: item.term, evidence: item.detail })),
+      keywordsPartial: parsed.keywordsPartial
+        .filter((item) => item.term)
+        .map((item) => ({ term: item.term, note: item.detail })),
+      keywordsMissing: parsed.keywordsMissing
+        .filter((item) => item.term)
+        .map((item) => ({ term: item.term, explanation: item.detail })),
+      technicalSkills: parsed.technicalSkills,
+      softSkills: parsed.softSkills,
+      strengths: parsed.strengths,
+      improvements: parsed.improvements,
+      optimizedResume: parsed.optimizedResume,
     };
   });
