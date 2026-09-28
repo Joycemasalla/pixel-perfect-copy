@@ -141,29 +141,43 @@
 }
 
 /* Print: only the optimized resume, single column, selectable text. */
+/* Screen: the print-only copy of the resume stays hidden. */
+.print-sheet {
+  display: none;
+}
+
 @media print {
+  html,
   body {
+    height: auto;
     background: #fff;
   }
 
-  body :not(.print-resume):not(.print-resume *) {
-    visibility: hidden;
+  body > *:not(.print-sheet) {
+    display: none !important;
   }
 
-  .print-resume {
-    visibility: visible;
-    position: absolute;
-    inset: 0 auto auto 0;
-    width: 100%;
-    max-width: none;
+  .print-sheet {
+    display: block;
     margin: 0;
     padding: 0;
     border: none;
     box-shadow: none;
     background: #fff;
     color: #0f172a;
-    font-size: 11.5pt;
+    font-size: 11pt;
     line-height: 1.5;
+  }
+
+  .print-sheet h3,
+  .print-sheet h4,
+  .print-sheet li,
+  .print-sheet p {
+    break-inside: avoid;
+  }
+
+  .print-sheet h4 {
+    break-after: avoid;
   }
 
   @page {

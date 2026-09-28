@@ -1,5 +1,10 @@
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+
 type ResumePreviewProps = {
   content: string;
+  /** Renders without card chrome, used for the print-only copy. */
+  plain?: boolean;
 };
 
 type Block =
@@ -32,7 +37,7 @@ function parseResume(content: string): Block[] {
 
     const bullet = line.match(/^(?:[-•*–]|\d+\.)\s+(.*)$/);
     if (bullet) {
-      bullets.push(bullet[1]);
+      bullets.push(bullet[1] ?? "");
       continue;
     }
 
@@ -45,7 +50,9 @@ function parseResume(content: string): Block[] {
     }
 
     const plain = line.replace(/^#+\s*/, "").replace(/\*\*/g, "").replace(/:$/, "");
-    if (HEADING.test(plain) && plain.length <= 40) {
+    // Date ranges like "2019 - 2021" are uppercase by accident, not section titles.
+    const looksLikeDate = /\d{4}/.test(plain);
+    if (HEADING.test(plain) && plain.length <= 40 && !looksLikeDate) {
       blocks.push({ kind: "heading", text: plain });
       continue;
     }
@@ -57,11 +64,15 @@ function parseResume(content: string): Block[] {
   return blocks;
 }
 
-export function ResumePreview({ content }: ResumePreviewProps) {
+export function ResumePreview({ content, plain = false }: ResumePreviewProps) {
   const blocks = parseResume(content);
 
   return (
-    <article className="print-resume rounded-xl border border-border bg-card p-6 leading-relaxed sm:p-10">
+    <article
+      className={
+        plain ? "leading-relaxed" : "rounded-xl border border-border bg-card p-6 leading-relaxed sm:p-10"
+      }
+    >
       {blocks.map((block, index) => {
         if (block.kind === "name") {
           return (
@@ -96,5 +107,23 @@ export function ResumePreview({ content }: ResumePreviewProps) {
         );
       })}
     </article>
+  );
+}
+
+/**
+ * Print-only copy of the optimized resume, mounted as a direct child of <body>
+ * so the print stylesheet can hide every other top-level element.
+ */
+export function ResumePrintSheet({ content }: { content: string }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="print-sheet" aria-hidden="true">
+      <ResumePreview content={content} plain />
+    </div>,
+    document.body,
   );
 }
