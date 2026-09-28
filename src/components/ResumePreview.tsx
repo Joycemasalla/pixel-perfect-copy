@@ -50,7 +50,9 @@ function parseResume(content: string): Block[] {
     }
 
     const plain = line.replace(/^#+\s*/, "").replace(/\*\*/g, "").replace(/:$/, "");
-    if (HEADING.test(plain) && plain.length <= 40) {
+    // Date ranges like "2019 - 2021" are uppercase by accident, not section titles.
+    const looksLikeDate = /\d{4}/.test(plain);
+    if (HEADING.test(plain) && plain.length <= 40 && !looksLikeDate) {
       blocks.push({ kind: "heading", text: plain });
       continue;
     }
